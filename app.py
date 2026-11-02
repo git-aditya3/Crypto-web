@@ -115,6 +115,9 @@ class DemoOracle:
         return {
             "mode": "demo",
             "symbol": "BTC / USD",
+            "dataSource": "Deterministic demo feed",
+            "dataAgeSeconds": 0,
+            "refreshWarning": None,
             "price": price,
             "change24h": 2.41,
             "asOf": now.isoformat(),
@@ -151,7 +154,10 @@ def api_status():
 def api_signal():
     if oracle.status()["status"] != "ready":
         return jsonify({"error": "Forecast is being refreshed"}), 503
-    return jsonify(oracle.snapshot())
+    try:
+        return jsonify(oracle.snapshot())
+    except RuntimeError as exc:
+        return jsonify({"error": str(exc)}), 503
 
 
 @app.post("/api/retrain")

@@ -32,10 +32,13 @@ class OracleEngine:
         )
         self._lock = threading.RLock()
         self._training_lock = threading.Lock()
+        self._refresh_lock = threading.Lock()
         self._bundles: dict[str, dict[str, Any]] = {}
         self._candles: pd.DataFrame | None = None
         self._features: pd.DataFrame | None = None
         self._fetched_at = 0.0
+        self._last_refresh_error: str | None = None
+        self._maintenance_started = False
         self._status: dict[str, Any] = {
             "status": "idle", "message": "Models have not been trained", "progress": 0
         }
@@ -131,7 +134,9 @@ class OracleEngine:
                 self._features = features
                 self._bundles = bundles
                 self._fetched_at = time.time()
+                self._last_refresh_error = None
             self._set_status("ready", "Models online", 100)
+            self._start_market_maintenance()
         except Exception as exc:
             self._set_status("error", f"{type(exc).__name__}: {exc}", 0)
             raise
@@ -154,14 +159,45 @@ class OracleEngine:
         threading.Thread(target=run, name="btc-oracle-training", daemon=True).start()
         return True
 
+    def _start_market_maintenance(self) -> None:
+        """Keep market candles current even when no browser session is open."""
+        with self._lock:
+            if self._maintenance_started:
+                return
+            self._maintenance_started = True
+
+        def maintain() -> None:
+            while True:
+                time.sleep(max(self.config.refresh_seconds, 30))
+                self._refresh_if_stale()
+
+        threading.Thread(target=maintain, name="btc-market-maintenance", daemon=True).start()
+
     def _refresh_if_stale(self) -> None:
+        """Refresh candles in the background while continuing to serve cached data."""
         with self._lock:
             stale = time.time() - self._fetched_at > self.config.refresh_seconds
-        if not stale:
+        if not stale or self._refresh_lock.locked() or self._training_lock.locked():
             return
-        candles, features = self._load_data()
-        with self._lock:
-            self._candles, self._features, self._fetched_at = candles, features, time.time()
+
+        def refresh() -> None:
+            if not self._refresh_lock.acquire(blocking=False):
+                return
+            try:
+                candles, features = self._load_data()
+                with self._lock:
+                    self._candles, self._features = candles, features
+                    self._fetched_at = time.time()
+                    self._last_refresh_error = None
+            except Exception as exc:  # noqa: BLE001 - stale cache remains available
+                with self._lock:
+                    self._last_refresh_error = f"{type(exc).__name__}: {exc}"
+                    # Back off before another request retries a failing provider.
+                    self._fetched_at = time.time() - self.config.refresh_seconds + 60
+            finally:
+                self._refresh_lock.release()
+
+        threading.Thread(target=refresh, name="btc-market-refresh", daemon=True).start()
 
     def snapshot(self) -> dict[str, Any]:
         """Generate live calls without refitting the validated model bundles."""
@@ -173,6 +209,7 @@ class OracleEngine:
             candles = self._candles.copy()  # type: ignore[union-attr]
             features = self._features.copy()  # type: ignore[union-attr]
             bundles = dict(self._bundles)
+            refresh_error = self._last_refresh_error
 
         recent_features = features.dropna().iloc[-self.config.sequence_length :]
         if recent_features.empty:
@@ -233,6 +270,9 @@ class OracleEngine:
         return {
             "mode": "live",
             "symbol": self.config.symbol.replace("-", " / "),
+            "dataSource": candles.attrs.get("source", "Configured market provider"),
+            "dataAgeSeconds": max(0, int((pd.Timestamp.now(tz="UTC") - as_of).total_seconds())),
+            "refreshWarning": refresh_error,
             "price": round(price, 2),
             "change24h": round((price / day_reference - 1) * 100, 2),
             "asOf": as_of.isoformat(),

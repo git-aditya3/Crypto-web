@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: btc-oracle
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --workers 1 --threads 4 --timeout 600 --bind 0.0.0.0:$PORT app:app
+    healthCheckPath: /health
+    envVars:
+      - key: BTC_ORACLE_MODE
+        value: ml
+      - key: PYTHON_VERSION
+        value: 3.11.11

@@ -48,7 +48,29 @@ pip install -r requirements-ml.txt
 BTC_ORACLE_MODE=ml python app.py
 ```
 
-Live mode downloads up to 729 days of hourly BTC-USD candles and starts training immediately. The API status endpoint reports progress or a detailed error. Installing PyTorch is optional and documented in `requirements-ml.txt`; without it, the API honestly reports the `Neural Network` fallback rather than labelling it LSTM.
+Live mode downloads up to 729 days of hourly BTC-USD candles and starts training immediately. Yahoo Finance provides deep history, while Coinbase overlays the latest exchange candles and acts as a full-history failover. The browser requests a new snapshot every minute; the engine refreshes candles every five minutes without blocking requests and keeps serving the last verified data if a provider is temporarily unavailable. The API exposes `dataSource`, `dataAgeSeconds`, and `refreshWarning` so freshness is observable.
+
+The API status endpoint reports progress or a detailed error. Installing PyTorch is optional and documented in `requirements-ml.txt`; without it, the API honestly reports the `Neural Network` fallback rather than labelling it LSTM.
+
+## Hosting with live data
+
+A production `Dockerfile` and Render Blueprint are included. Both set `BTC_ORACLE_MODE=ml` and run one Gunicorn worker with four threads. A single worker is intentional: it avoids training duplicate model ensembles and wasting memory.
+
+### Docker
+
+```bash
+docker build -t btc-oracle .
+docker run --rm -p 5000:5000 -e BTC_ORACLE_MODE=ml btc-oracle
+```
+
+For another hosting provider, use:
+
+```bash
+pip install -r requirements.txt
+BTC_ORACLE_MODE=ml gunicorn --workers 1 --threads 4 --timeout 600 --bind 0.0.0.0:$PORT app:app
+```
+
+The host must allow outbound HTTPS to Yahoo Finance and Coinbase. If Yahoo is blocked, Coinbase automatically supplies the history. Do not deploy with multiple workers unless model training is moved to a separate shared worker service.
 
 ## Next milestone
 

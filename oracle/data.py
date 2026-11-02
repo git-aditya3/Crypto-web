@@ -1,34 +1,20 @@
 from __future__ import annotations
 
+import json
+import time
 from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from urllib.parse import urlencode
+from urllib.request import Request, urlopen
 
 import numpy as np
 import pandas as pd
 
 REQUIRED_COLUMNS = ("open", "high", "low", "close", "volume")
+COINBASE_CANDLES_URL = "https://api.exchange.coinbase.com/products/{product}/candles"
 
 
-def fetch_bitcoin(symbol: str = "BTC-USD", lookback_days: int = 729) -> pd.DataFrame:
-    """Download hourly candles from Yahoo Finance.
-
-    yfinance is imported lazily so feature engineering and tests do not require a
-    network client. Yahoo limits intraday history to roughly 730 days.
-    """
-    try:
-        import yfinance as yf
-    except ImportError as exc:  # pragma: no cover - depends on optional runtime package
-        raise RuntimeError("Install ML dependencies with: pip install -r requirements-ml.txt") from exc
-
-    frame = yf.download(
-        symbol,
-        period=f"{lookback_days}d",
-        interval="1h",
-        auto_adjust=True,
-        progress=False,
-        threads=False,
-    )
-    if frame.empty:
-        raise RuntimeError(f"No hourly candles returned for {symbol}")
+def _normalize_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if isinstance(frame.columns, pd.MultiIndex):
         frame.columns = frame.columns.get_level_values(0)
     frame = frame.rename(columns=str.lower)
@@ -38,6 +24,110 @@ def fetch_bitcoin(symbol: str = "BTC-USD", lookback_days: int = 729) -> pd.DataF
     frame = frame.loc[:, REQUIRED_COLUMNS].apply(pd.to_numeric, errors="coerce").dropna()
     frame.index = pd.to_datetime(frame.index, utc=True)
     return validate_candles(frame)
+
+
+def _fetch_yahoo(symbol: str, lookback_days: int, attempts: int = 2) -> pd.DataFrame:
+    try:
+        import yfinance as yf
+    except ImportError as exc:  # pragma: no cover - depends on runtime package
+        raise RuntimeError("Install dependencies with: pip install -r requirements.txt") from exc
+
+    last_error: Exception | None = None
+    for attempt in range(attempts):
+        try:
+            frame = yf.download(
+                symbol,
+                period=f"{lookback_days}d",
+                interval="1h",
+                auto_adjust=True,
+                progress=False,
+                threads=False,
+                timeout=20,
+            )
+            if frame.empty:
+                raise RuntimeError(f"No hourly candles returned for {symbol}")
+            return _normalize_frame(frame)
+        except Exception as exc:  # noqa: BLE001 - yfinance exposes varied transport errors
+            last_error = exc
+            if attempt + 1 < attempts:
+                time.sleep(1.5 * (attempt + 1))
+    raise RuntimeError(f"Yahoo Finance failed after {attempts} attempts: {last_error}") from last_error
+
+
+def _coinbase_page(product: str, start: datetime, end: datetime) -> pd.DataFrame:
+    query = urlencode({"granularity": 3600, "start": start.isoformat(), "end": end.isoformat()})
+    request = Request(
+        f"{COINBASE_CANDLES_URL.format(product=product)}?{query}",
+        headers={"User-Agent": "BTC-Oracle/1.0", "Accept": "application/json"},
+    )
+    with urlopen(request, timeout=20) as response:
+        payload = json.load(response)
+    if not isinstance(payload, list) or not payload:
+        raise RuntimeError("Coinbase returned no candles")
+    # Coinbase rows: [time, low, high, open, close, volume].
+    frame = pd.DataFrame(payload, columns=["time", "low", "high", "open", "close", "volume"])
+    frame.index = pd.to_datetime(frame.pop("time"), unit="s", utc=True)
+    return _normalize_frame(frame)
+
+
+def _fetch_coinbase(symbol: str, lookback_days: int, full_history: bool = False) -> pd.DataFrame:
+    product = symbol
+    if product != "BTC-USD":
+        raise ValueError("Coinbase fallback currently supports BTC-USD only")
+    end = datetime.now(UTC).replace(minute=0, second=0, microsecond=0) + timedelta(hours=1)
+    requested_hours = lookback_days * 24 if full_history else min(250, lookback_days * 24)
+    start_limit = end - timedelta(hours=requested_hours)
+    pages: list[pd.DataFrame] = []
+    page_end = end
+    # Coinbase permits at most 300 candles per request; 290 avoids boundary ambiguity.
+    while page_end > start_limit:
+        page_start = max(start_limit, page_end - timedelta(hours=290))
+        pages.append(_coinbase_page(product, page_start, page_end))
+        page_end = page_start
+        if full_history and page_end > start_limit:
+            time.sleep(0.12)  # stay below the public REST burst limit
+    frame = pd.concat(pages).sort_index()
+    return validate_candles(frame.loc[~frame.index.duplicated(keep="last")])
+
+
+def fetch_bitcoin(symbol: str = "BTC-USD", lookback_days: int = 729) -> pd.DataFrame:
+    """Fetch hourly candles with provider failover and a fresh exchange tail.
+
+    Yahoo supplies deep history efficiently. Coinbase supplies the latest exchange
+    candles and becomes a full-history fallback if Yahoo is unavailable. This
+    arrangement avoids a single market-data provider becoming a production outage.
+    """
+    yahoo_error: Exception | None = None
+    try:
+        history = _fetch_yahoo(symbol, lookback_days)
+        source = "Yahoo Finance"
+    except Exception as exc:  # noqa: BLE001 - fail over on any provider failure
+        yahoo_error = exc
+        try:
+            history = _fetch_coinbase(symbol, lookback_days, full_history=True)
+            source = "Coinbase (fallback)"
+        except Exception as coinbase_error:
+            raise RuntimeError(
+                f"All market-data providers failed. Yahoo: {yahoo_error}; Coinbase: {coinbase_error}"
+            ) from coinbase_error
+
+    tail_error: Exception | None = None
+    try:
+        recent = _fetch_coinbase(symbol, lookback_days, full_history=False)
+        history = pd.concat([history, recent]).sort_index()
+        history = history.loc[~history.index.duplicated(keep="last")]
+        source = f"{source} + Coinbase"
+    except Exception as exc:  # noqa: BLE001 - deep history remains valid
+        tail_error = exc
+
+    history = validate_candles(history)
+    age = datetime.now(UTC) - history.index[-1].to_pydatetime()
+    if age > timedelta(hours=4):
+        raise RuntimeError(f"Latest {source} candle is stale ({age.total_seconds() / 3600:.1f} hours old)")
+    history.attrs["source"] = source
+    errors = [str(error) for error in (yahoo_error, tail_error) if error]
+    history.attrs["provider_error"] = "; ".join(errors) or None
+    return history
 
 
 def validate_candles(frame: pd.DataFrame) -> pd.DataFrame:
