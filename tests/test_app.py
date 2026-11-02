@@ -50,3 +50,35 @@ def test_unknown_api_route_is_json():
     response = app.test_client().get("/api/missing")
     assert response.status_code == 404
     assert response.is_json
+
+
+def test_vercel_web_layer_proxies_to_persistent_backend(monkeypatch):
+    class BackendResponse:
+        def __init__(self):
+            self.status = 200
+            self.headers = {"Content-Type": "application/json"}
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        @staticmethod
+        def read():
+            return b'{"status":"ready","serving":true,"mode":"ml"}'
+
+    captured = {}
+
+    def fake_urlopen(upstream, timeout):
+        captured["url"] = upstream.full_url
+        captured["timeout"] = timeout
+        return BackendResponse()
+
+    monkeypatch.setattr(app_module, "BACKEND_URL", "https://ml.example.com")
+    monkeypatch.setattr(app_module, "urlopen", fake_urlopen)
+    response = app.test_client().get("/api/status")
+
+    assert response.status_code == 200
+    assert response.get_json()["mode"] == "ml"
+    assert captured == {"url": "https://ml.example.com/api/status", "timeout": 25}

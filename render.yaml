@@ -17,6 +17,6 @@ services:
       - key: MODEL_RETRAIN_SECONDS
         value: 21600
       - key: PYTHON_VERSION
-        value: 3.11.11
+        value: 3.12.7
       - key: LOG_LEVEL
         value: INFO
