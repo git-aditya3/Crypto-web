@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#080b10">
+  <meta name="description" content="BTC Oracle — confidence-weighted Bitcoin market forecasts.">
+  <title>BTC Oracle — Market Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/app.css') }}">
+</head>
+<body>
+  <div class="ambient ambient-one"></div><div class="ambient ambient-two"></div>
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="#overview" aria-label="BTC Oracle home">
+      <span class="brand-mark">₿</span><span>ORACLE</span><b>/</b>
+    </a>
+    <nav aria-label="Primary navigation">
+      <a href="#overview" class="nav-link active"><span class="nav-icon">⌁</span>Overview</a>
+      <a href="#forecast" class="nav-link"><span class="nav-icon">⌇</span>Forecast</a>
+      <a href="#models" class="nav-link"><span class="nav-icon">◫</span>Models</a>
+      <a href="#method"><span class="nav-icon">◎</span>Methodology</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <div class="network"><span class="live-dot"></span><div><b>Market feed</b><small>Demo data active</small></div></div>
+      <p>BTC Oracle v0.1</p>
+    </div>
+  </aside>
+
+  <main>
+    <header class="topbar" id="overview">
+      <button class="menu-button" id="menuButton" aria-label="Open menu">☰</button>
+      <div><p class="eyebrow">MARKET INTELLIGENCE / BTC-USD</p><h1>Good evening, trader.</h1></div>
+      <div class="top-actions">
+        <div class="status-chip" id="statusChip"><span></span><b id="statusText">Connecting</b></div>
+        <button class="refresh-button" id="refreshButton"><span>↻</span> Retrain models</button>
+      </div>
+    </header>
+
+    <div class="notice" id="demoNotice"><span>DEMO</span> Interface milestone — deterministic sample forecasts are shown until the ML engine is connected.</div>
+
+    <section class="market-strip" aria-label="Current Bitcoin market data">
+      <div class="asset"><div class="coin">₿</div><div><small>BITCOIN</small><strong>BTC <i>/ USD</i></strong></div></div>
+      <div class="market-stat"><small>LIVE PRICE</small><strong id="livePrice">—</strong></div>
+      <div class="market-stat"><small>24H CHANGE</small><strong class="positive" id="dayChange">—</strong></div>
+      <div class="market-stat wide"><small>LAST MODEL UPDATE</small><strong id="asOf">—</strong></div>
+      <div class="market-stat"><small>DATA WINDOW</small><strong>168H</strong></div>
+    </section>
+
+    <section class="signal-panel" id="forecast">
+      <div class="signal-main">
+        <div class="section-label"><span>01</span> ENSEMBLE SIGNAL</div>
+        <div class="signal-word" id="call">—</div>
+        <div class="signal-explanation"><span id="signalArrow">↗</span><p id="signalCopy">Preparing the latest confidence-weighted forecast.</p></div>
+        <div class="horizon-tabs" id="horizonTabs" aria-label="Forecast horizon"></div>
+      </div>
+      <div class="metrics">
+        <article><small>EXPECTED TARGET</small><strong id="target">—</strong><em id="expectedMove">—</em></article>
+        <article><small>80% PRICE RANGE</small><strong id="priceRange">—</strong><em>Prediction interval</em></article>
+        <article><small>FORECAST EXPIRES</small><strong id="expires">—</strong><em id="duration">—</em></article>
+        <article class="confidence-card"><div><small>MODEL CONFIDENCE</small><strong id="confidenceText">—</strong><em>Agreement × validation</em></div><div class="confidence-ring" id="confidenceRing"><div></div></div></article>
+      </div>
+    </section>
+
+    <section class="dashboard-grid">
+      <article class="panel chart-panel">
+        <div class="panel-head"><div><div class="section-label"><span>02</span> PRICE + FORECAST</div><h2>7-day trajectory</h2></div><div class="legend"><span class="history-key"></span>History <span class="target-key"></span>Target</div></div>
+        <div class="chart-wrap"><canvas id="priceChart" aria-label="Bitcoin price history and forecast"></canvas><div class="chart-tooltip" id="chartTooltip"></div></div>
+        <div class="chart-foot"><span>7 DAYS AGO</span><span>NOW</span><span id="chartEnd">FORECAST</span></div>
+      </article>
+
+      <article class="panel models-panel" id="models">
+        <div class="panel-head"><div><div class="section-label"><span>03</span> MODEL MIX</div><h2>Ensemble weights</h2></div><span class="verified">✓ VALIDATED</span></div>
+        <div id="modelList" class="model-list"></div>
+        <div class="model-summary"><span>Ensemble hit rate</span><strong id="hitRate">—</strong></div>
+      </article>
+    </section>
+
+    <section class="method-panel" id="method">
+      <div><div class="section-label"><span>04</span> HOW TO READ THIS</div><h2>Signal, not certainty.</h2></div>
+      <p>Three independent models estimate price movement. Their forecasts are weighted by out-of-sample performance, then combined into one transparent call.</p>
+      <p class="disclaimer">Educational use only. This is not financial advice. Digital assets are volatile and you can lose your entire investment.</p>
+    </section>
+    <footer><span>BTC ORACLE / RESEARCH TERMINAL</span><span>Built for transparent market experiments</span></footer>
+  </main>
+  <div class="toast" id="toast" role="status"></div>
+  <script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+</body>
+</html>
