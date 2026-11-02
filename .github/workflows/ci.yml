@@ -18,6 +18,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - run: pip install -r requirements-dev.txt
-      - run: ruff check app.py oracle tests
+      - run: ruff check app.py oracle scripts tests
       - run: pytest -q
-      - run: python -m compileall -q app.py oracle tests
+      - run: python -m compileall -q app.py oracle scripts tests
+      - run: python scripts/build_package.py

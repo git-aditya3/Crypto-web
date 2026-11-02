@@ -57,9 +57,13 @@ The API exposes `dataSource`, `dataAgeSeconds`, `marketUpdatedAt`, `modelTrained
 
 The API status endpoint reports progress or a detailed error. Installing PyTorch is optional and documented in `requirements-ml.txt`; without it, the API honestly reports the `Neural Network` fallback rather than labelling it LSTM.
 
+## Deployment package
+
+Run `python scripts/build_package.py` to create `team-a-web-deploy.zip`. The ZIP contains only the application and hosting files—no virtual environment, caches, tests, credentials, or Git history. Upload it to a Python web host, or follow the Docker and Render instructions in `DEPLOYMENT.md`.
+
 ## Hosting with live data
 
-A production `Dockerfile` and Render Blueprint are included. Both set `BTC_ORACLE_MODE=ml` and run one Gunicorn worker with four threads. A single worker is intentional: it avoids training duplicate model ensembles and wasting memory.
+A production `Dockerfile`, Compose configuration, Procfile, deployment ZIP, and Render Blueprint are included. Both set `BTC_ORACLE_MODE=ml` and run one Gunicorn worker with four threads. A single worker is intentional: it avoids training duplicate model ensembles and wasting memory.
 
 ### Docker
 
