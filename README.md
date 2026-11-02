@@ -1,4 +1,4 @@
-# BTC Oracle Web
+# Team-A Bitcoin Market Intelligence
 
 A responsive Flask dashboard for confidence-weighted Bitcoin market forecasts. This first web milestone includes the complete UI, API contract, interactive forecast horizons, custom canvas chart, model weighting view, and retraining lifecycle.
 
@@ -59,8 +59,8 @@ A production `Dockerfile` and Render Blueprint are included. Both set `BTC_ORACL
 ### Docker
 
 ```bash
-docker build -t btc-oracle .
-docker run --rm -p 5000:5000 -e BTC_ORACLE_MODE=ml btc-oracle
+docker build -t team-a-btc .
+docker run --rm -p 5000:5000 -e BTC_ORACLE_MODE=ml team-a-btc
 ```
 
 For another hosting provider, use:

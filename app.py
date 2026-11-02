@@ -1,4 +1,4 @@
-"""BTC Oracle web application.
+"""Team-A Bitcoin market intelligence web application.
 
 The demo data provider keeps the web experience usable while the ML engine is being
 built. Replace ``DemoOracle`` with an adapter exposing ``snapshot()`` and

@@ -1,4 +1,4 @@
-"""BTC Oracle machine-learning core."""
+"""Team-A Bitcoin machine-learning core."""
 
 from .config import OracleConfig
 from .engine import OracleEngine

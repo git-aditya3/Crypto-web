@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: btc-oracle
+    name: team-a-btc
     runtime: python
     plan: starter
     buildCommand: pip install -r requirements.txt

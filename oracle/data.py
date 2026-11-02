@@ -58,7 +58,7 @@ def _coinbase_page(product: str, start: datetime, end: datetime) -> pd.DataFrame
     query = urlencode({"granularity": 3600, "start": start.isoformat(), "end": end.isoformat()})
     request = Request(
         f"{COINBASE_CANDLES_URL.format(product=product)}?{query}",
-        headers={"User-Agent": "BTC-Oracle/1.0", "Accept": "application/json"},
+        headers={"User-Agent": "Team-A-BTC/1.0", "Accept": "application/json"},
     )
     with urlopen(request, timeout=20) as response:
         payload = json.load(response)

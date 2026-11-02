@@ -5,7 +5,7 @@ def test_home_renders():
     client = app.test_client()
     response = client.get("/")
     assert response.status_code == 200
-    assert b"BTC Oracle" in response.data
+    assert b"Team-A" in response.data
 
 
 def test_signal_contract():
