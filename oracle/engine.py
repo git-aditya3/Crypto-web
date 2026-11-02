@@ -37,6 +37,7 @@ class OracleEngine:
         self._candles: pd.DataFrame | None = None
         self._features: pd.DataFrame | None = None
         self._fetched_at = 0.0
+        self._trained_at = 0.0
         self._last_refresh_error: str | None = None
         self._maintenance_started = False
         self._status: dict[str, Any] = {
@@ -45,7 +46,11 @@ class OracleEngine:
 
     def status(self) -> dict[str, Any]:
         with self._lock:
-            return dict(self._status)
+            return {**self._status, "serving": bool(self._bundles)}
+
+    def can_serve(self) -> bool:
+        with self._lock:
+            return bool(self._bundles and self._candles is not None)
 
     def _set_status(self, status: str, message: str, progress: int) -> None:
         with self._lock:
@@ -134,6 +139,7 @@ class OracleEngine:
                 self._features = features
                 self._bundles = bundles
                 self._fetched_at = time.time()
+                self._trained_at = time.time()
                 self._last_refresh_error = None
             self._set_status("ready", "Models online", 100)
             self._start_market_maintenance()
@@ -169,7 +175,12 @@ class OracleEngine:
         def maintain() -> None:
             while True:
                 time.sleep(max(self.config.refresh_seconds, 30))
-                self._refresh_if_stale()
+                with self._lock:
+                    model_age = time.time() - self._trained_at
+                if model_age >= self.config.model_retrain_seconds:
+                    self.retrain()
+                else:
+                    self._refresh_if_stale()
 
         threading.Thread(target=maintain, name="btc-market-maintenance", daemon=True).start()
 

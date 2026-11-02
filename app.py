@@ -6,6 +6,8 @@ built. Replace ``DemoOracle`` with an adapter exposing ``snapshot()`` and
 """
 from __future__ import annotations
 
+import hmac
+import logging
 import math
 import os
 import random
@@ -14,9 +16,20 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
-from flask import Flask, jsonify, render_template
+from flask import Flask, jsonify, render_template, request
+from werkzeug.middleware.proxy_fix import ProxyFix
+
+APP_VERSION = "0.2.0"
+ADMIN_TOKEN = os.getenv("TEAM_A_ADMIN_TOKEN", "").strip()
+
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 app = Flask(__name__)
+app.config.update(MAX_CONTENT_LENGTH=16 * 1024, JSON_SORT_KEYS=False)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 
 @dataclass(frozen=True)
@@ -43,7 +56,10 @@ class DemoOracle:
 
     def status(self) -> dict[str, Any]:
         with self._lock:
-            return dict(self._status)
+            return {**self._status, "serving": True}
+
+    def can_serve(self) -> bool:
+        return True
 
     def retrain(self) -> bool:
         with self._lock:
@@ -140,36 +156,92 @@ def create_oracle():
 oracle = create_oracle()
 
 
+def can_serve() -> bool:
+    return bool(getattr(oracle, "can_serve", lambda: oracle.status()["status"] == "ready")())
+
+
+@app.after_request
+def production_headers(response):
+    """Apply safe defaults for browsers, proxies, and API caches."""
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+    response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' "
+        "https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'"
+    )
+    if request.is_secure:
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    if request.path.startswith("/api/") or request.path.startswith("/health"):
+        response.headers["Cache-Control"] = "no-store"
+    elif request.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "public, max-age=3600"
+    else:
+        response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
 @app.get("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", app_version=APP_VERSION)
 
 
 @app.get("/api/status")
 def api_status():
-    return jsonify(oracle.status())
+    return jsonify({
+        **oracle.status(),
+        "mode": os.getenv("BTC_ORACLE_MODE", "demo").lower(),
+        "version": APP_VERSION,
+        "retrainProtected": bool(ADMIN_TOKEN),
+    })
 
 
 @app.get("/api/signal")
 def api_signal():
-    if oracle.status()["status"] != "ready":
-        return jsonify({"error": "Forecast is being refreshed"}), 503
+    if not can_serve():
+        return jsonify({"error": "Forecast is not ready yet"}), 503
     try:
         return jsonify(oracle.snapshot())
     except RuntimeError as exc:
+        app.logger.warning("Signal generation unavailable: %s", exc)
         return jsonify({"error": str(exc)}), 503
 
 
 @app.post("/api/retrain")
 def api_retrain():
+    supplied_token = request.headers.get("X-Admin-Token", "")
+    if ADMIN_TOKEN and not hmac.compare_digest(supplied_token, ADMIN_TOKEN):
+        return jsonify({"error": "A valid admin token is required"}), 401
     started = oracle.retrain()
     return jsonify({"started": started, **oracle.status()}), 202 if started else 200
 
 
 @app.get("/health")
+@app.get("/health/live")
 def health():
-    return jsonify({"ok": True})
+    return jsonify({"ok": True, "version": APP_VERSION})
+
+
+@app.get("/health/ready")
+def readiness():
+    status = oracle.status()
+    ready = can_serve()
+    return jsonify({"ready": ready, "status": status["status"]}), 200 if ready else 503
+
+
+@app.errorhandler(404)
+def not_found(_error):
+    if request.path.startswith("/api/"):
+        return jsonify({"error": "Endpoint not found"}), 404
+    return "Not found", 404
+
+
+@app.errorhandler(405)
+def method_not_allowed(_error):
+    return jsonify({"error": "Method not allowed"}), 405
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", "5000")), debug=False)

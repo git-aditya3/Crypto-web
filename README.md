@@ -1,8 +1,8 @@
 # Team-A Bitcoin Market Intelligence
 
-A responsive Flask dashboard for confidence-weighted Bitcoin market forecasts. This first web milestone includes the complete UI, API contract, interactive forecast horizons, custom canvas chart, model weighting view, and retraining lifecycle.
+A production-packaged Flask dashboard for confidence-weighted Bitcoin market forecasts. It includes a responsive interface, resilient live-data providers, an ML ensemble, operational health checks, protected retraining, container deployment, and automated CI.
 
-> The current API serves deterministic demo forecasts so the web experience works before the ML engine is connected. It is clearly labelled in the interface.
+> Local development uses clearly labelled deterministic demo forecasts by default. Hosted configurations enable the live ML engine.
 
 ## Run locally
 
@@ -19,17 +19,20 @@ Open <http://localhost:5000>.
 
 - `GET /api/status` — model status and training progress
 - `GET /api/signal` — market history and all forecast horizons
-- `POST /api/retrain` — start a non-blocking model refresh
-- `GET /health` — health check
+- `POST /api/retrain` — start a non-blocking model refresh; requires `X-Admin-Token` when configured
+- `GET /health` and `GET /health/live` — process liveness checks
+- `GET /health/ready` — model/data readiness check
 
 ## Structure
 
 ```text
-app.py                  Flask app and temporary demo provider
-static/css/app.css      responsive dashboard styles
-static/js/app.js        rendering, chart, and API integration
+app.py                  Flask app, API, security headers, and health checks
+oracle/                 data providers, features, models, and ensemble engine
+static/                 responsive styles and browser application
 templates/index.html    semantic dashboard markup
-tests/test_app.py       route and API contract tests
+tests/                  API, data, feature, and engine tests
+Dockerfile              non-root production container with health check
+render.yaml             live-mode Render deployment blueprint
 ```
 
 ## ML core
@@ -39,7 +42,7 @@ The first machine-learning core is available in `oracle/`:
 - `data.py` validates hourly candles and computes 20 leak-free technical/time features.
 - `models.py` builds a boosted tree, random forest, and neural sequence model. XGBoost and PyTorch are preferred when installed; explicitly named sklearn fallbacks keep development portable.
 - `engine.py` performs a purged, chronological 80/20 split per horizon, derives confidence weights from directional accuracy and RMSE, and generates calls and 80% price intervals.
-- Training runs in a background thread and model bundles are replaced atomically.
+- Training runs in a background thread, model bundles are replaced atomically, and validated models retrain every 24 hours while the previous bundle continues serving.
 
 The website stays in demo mode by default. To run the real engine:
 
@@ -60,7 +63,10 @@ A production `Dockerfile` and Render Blueprint are included. Both set `BTC_ORACL
 
 ```bash
 docker build -t team-a-btc .
-docker run --rm -p 5000:5000 -e BTC_ORACLE_MODE=ml team-a-btc
+docker run --rm -p 5000:5000 \
+  -e BTC_ORACLE_MODE=ml \
+  -e TEAM_A_ADMIN_TOKEN="$(openssl rand -hex 32)" \
+  team-a-btc
 ```
 
 For another hosting provider, use:
@@ -71,6 +77,19 @@ BTC_ORACLE_MODE=ml gunicorn --workers 1 --threads 4 --timeout 600 --bind 0.0.0.0
 ```
 
 The host must allow outbound HTTPS to Yahoo Finance and Coinbase. If Yahoo is blocked, Coinbase automatically supplies the history. Do not deploy with multiple workers unless model training is moved to a separate shared worker service.
+
+Set a long random `TEAM_A_ADMIN_TOKEN` in production. The Retrain button prompts administrators for it and stores it only in that browser tab's session storage. Render generates the secret automatically. Security headers, no-store API caching, stale-while-refresh market data, liveness/readiness endpoints, graceful Gunicorn recycling, and a non-root container user are enabled by default.
+
+## Quality checks
+
+```bash
+pip install -r requirements-dev.txt
+ruff check app.py oracle tests
+pytest -q
+node --check static/js/app.js
+```
+
+GitHub Actions runs the Python checks for every push and pull request.
 
 ## Next milestone
 

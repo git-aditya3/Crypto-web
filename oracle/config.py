@@ -16,6 +16,7 @@ class OracleConfig:
     minimum_confidence: float = 0.40
     minimum_signal_sigma: float = 0.30
     refresh_seconds: int = 300
+    model_retrain_seconds: int = 86_400
     random_state: int = 42
     history_hours: int = 168
     minimum_training_rows: int = 500
@@ -27,3 +28,7 @@ class OracleConfig:
             raise ValueError("at least one positive forecast horizon is required")
         if self.sequence_length < 2:
             raise ValueError("sequence_length must be at least 2")
+        if self.refresh_seconds < 30:
+            raise ValueError("refresh_seconds must be at least 30")
+        if self.model_retrain_seconds < self.refresh_seconds:
+            raise ValueError("model_retrain_seconds must not be shorter than refresh_seconds")
