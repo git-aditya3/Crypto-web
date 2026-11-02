@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import threading
 import time
-from collections.abc import Callable
 from datetime import timedelta
 from functools import partial
 from typing import Any
@@ -101,7 +100,9 @@ class OracleEngine:
                         fitted[model_name] = model
                         predictions[model_name] = prediction
                         metrics[model_name] = {"rmse": max(rmse, 1e-12), "accuracy": accuracy}
-                    except Exception as exc:  # one model must not discard a healthy ensemble
+                    # Third-party estimators can raise library-specific exceptions;
+                    # isolate any failed estimator so healthy models can still train.
+                    except Exception as exc:  # noqa: BLE001
                         errors.append(f"{model_name}: {type(exc).__name__}: {exc}")
                 if len(fitted) < 2:
                     detail = "; ".join(errors) or "model factory returned fewer than two models"
@@ -146,9 +147,9 @@ class OracleEngine:
         def run() -> None:
             try:
                 self.train()
-            except Exception:
-                # Detailed failure is exposed through status(); do not crash the thread.
-                pass
+            except Exception:  # noqa: BLE001
+                # train() already publishes the detailed failure through status().
+                return
 
         threading.Thread(target=run, name="btc-oracle-training", daemon=True).start()
         return True

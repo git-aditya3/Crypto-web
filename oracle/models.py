@@ -20,7 +20,7 @@ class ScaledRegressor:
         self.model = model
         self.scaler = StandardScaler()
 
-    def fit(self, features: np.ndarray, target: np.ndarray) -> "ScaledRegressor":
+    def fit(self, features: np.ndarray, target: np.ndarray) -> ScaledRegressor:
         self.model.fit(self.scaler.fit_transform(features), target)
         return self
 
@@ -54,7 +54,7 @@ class TorchLSTMRegressor:
         windows = np.lib.stride_tricks.sliding_window_view(values, self.sequence_length, axis=0)
         return self.torch.from_numpy(np.ascontiguousarray(windows.transpose(0, 2, 1)))
 
-    def fit(self, features: np.ndarray, target: np.ndarray) -> "TorchLSTMRegressor":
+    def fit(self, features: np.ndarray, target: np.ndarray) -> TorchLSTMRegressor:
         torch = self.torch
         torch.manual_seed(self.seed)
         self.scaler.fit(features)

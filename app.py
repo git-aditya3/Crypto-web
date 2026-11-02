@@ -11,7 +11,7 @@ import os
 import random
 import threading
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from flask import Flask, jsonify, render_template
@@ -66,7 +66,7 @@ class DemoOracle:
 
     def snapshot(self) -> dict[str, Any]:
         rng = random.Random(21000)
-        now = datetime.now(timezone.utc).replace(minute=0, second=0, microsecond=0)
+        now = datetime.now(UTC).replace(minute=0, second=0, microsecond=0)
         start = now - timedelta(hours=167)
         price = 102_430.0
         points: list[dict[str, Any]] = []
