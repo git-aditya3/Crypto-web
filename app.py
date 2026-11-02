@@ -7,6 +7,7 @@ built. Replace ``DemoOracle`` with an adapter exposing ``snapshot()`` and
 from __future__ import annotations
 
 import math
+import os
 import random
 import threading
 from dataclasses import dataclass
@@ -122,7 +123,18 @@ class DemoOracle:
         }
 
 
-oracle = DemoOracle()
+def create_oracle():
+    """Select demo or live ML mode without coupling the web layer to training."""
+    if os.getenv("BTC_ORACLE_MODE", "demo").lower() != "ml":
+        return DemoOracle()
+    from oracle import OracleEngine
+
+    engine = OracleEngine()
+    engine.retrain()
+    return engine
+
+
+oracle = create_oracle()
 
 
 @app.get("/")

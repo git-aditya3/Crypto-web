@@ -32,9 +32,27 @@ templates/index.html    semantic dashboard markup
 tests/test_app.py       route and API contract tests
 ```
 
+## ML core
+
+The first machine-learning core is available in `oracle/`:
+
+- `data.py` validates hourly candles and computes 20 leak-free technical/time features.
+- `models.py` builds a boosted tree, random forest, and neural sequence model. XGBoost and PyTorch are preferred when installed; explicitly named sklearn fallbacks keep development portable.
+- `engine.py` performs a purged, chronological 80/20 split per horizon, derives confidence weights from directional accuracy and RMSE, and generates calls and 80% price intervals.
+- Training runs in a background thread and model bundles are replaced atomically.
+
+The website stays in demo mode by default. To run the real engine:
+
+```bash
+pip install -r requirements-ml.txt
+BTC_ORACLE_MODE=ml python app.py
+```
+
+Live mode downloads up to 729 days of hourly BTC-USD candles and starts training immediately. The API status endpoint reports progress or a detailed error. Installing PyTorch is optional and documented in `requirements-ml.txt`; without it, the API honestly reports the `Neural Network` fallback rather than labelling it LSTM.
+
 ## Next milestone
 
-Implement the data/features/models engine from `BTC_Oracle_Project.md`, then replace `DemoOracle` with an engine adapter that exposes the same `status()`, `snapshot()`, and `retrain()` interface.
+Add artifact persistence and walk-forward backtesting with trading fees/slippage, then benchmark the ensemble before changing any signal thresholds.
 
 ## Disclaimer
 
