@@ -63,7 +63,9 @@ Run `python scripts/build_package.py` to create `team-a-web-deploy.zip`. The ZIP
 
 ## Hosting with live data
 
-A production `Dockerfile`, Compose configuration, Procfile, deployment ZIP, and Render Blueprint are included. Both set `BTC_ORACLE_MODE=ml` and run one Gunicorn worker with four threads. A single worker is intentional: it avoids training duplicate model ensembles and wasting memory.
+Vercel, Docker, Compose, Procfile, deployment ZIP, and Render configurations are included. Python 3.12 is pinned consistently in `.python-version`, `pyproject.toml`, `uv.lock`, Docker, Render, and CI.
+
+Vercel runs the lightweight web layer and can proxy same-origin API requests to a persistent Team-A backend through `TEAM_A_BACKEND_URL`. Docker and Render set `BTC_ORACLE_MODE=ml` and run one Gunicorn worker with four threads. A single backend worker is intentional: it avoids training duplicate model ensembles and wasting memory. See `DEPLOYMENT.md` for the Vercel setup.
 
 ### Docker
 

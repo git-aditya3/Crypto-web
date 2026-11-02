@@ -1,6 +1,6 @@
 # Deploy Team-A as a Web Application
 
-Team-A is packaged for Docker, Render, and any Python host that supports a Procfile.
+Team-A is packaged for Vercel, Docker, Render, and any Python host that supports a Procfile. Python 3.12 is used consistently across all deployment targets.
 
 ## Required production settings
 
@@ -15,7 +15,20 @@ Team-A is packaged for Docker, Render, and any Python host that supports a Procf
 
 The host must permit outbound HTTPS access to Yahoo Finance and Coinbase. Use one web worker: each worker would otherwise train a separate in-memory ensemble.
 
-## Option 1: Render
+## Option 1: Vercel web frontend + persistent ML backend
+
+Vercel serverless functions cannot keep training threads alive between requests. The included `vercel.json` therefore deploys a lightweight Flask web function with only Flask installed from `uv.lock`. Live training must run on Render, Railway, Docker, or a VPS.
+
+1. Deploy this repository's backend with Option 2 or Option 3 below.
+2. Import the same repository into Vercel.
+3. In Vercel project settings, add `TEAM_A_BACKEND_URL` with the public backend origin, for example `https://team-a-btc.onrender.com`.
+4. Redeploy. Requests to `/api/status`, `/api/signal`, and `/api/retrain` are securely relayed by the Vercel function to the persistent service.
+
+The repository pins Python `3.12` in `.python-version` and declares `requires-python = ">=3.12"` in `pyproject.toml`. `uv.lock` contains the matching lock metadata. Do not enable `BTC_ORACLE_MODE=ml` directly on Vercel; the persistent backend owns live data refresh and model training.
+
+Without `TEAM_A_BACKEND_URL`, Vercel still deploys successfully in clearly labelled demo mode.
+
+## Option 2: Render
 
 1. Push this repository to GitHub.
 2. In Render, select **New > Blueprint** and choose the repository.
@@ -24,7 +37,7 @@ The host must permit outbound HTTPS access to Yahoo Finance and Coinbase. Use on
 
 `/health` is the liveness endpoint and remains available while models train.
 
-## Option 2: Docker
+## Option 3: Docker
 
 ```bash
 docker build -t team-a-btc .
@@ -44,7 +57,7 @@ docker compose up -d --build
 
 Open `http://localhost:5000`. The container runs as a non-root user and has a built-in health check.
 
-## Option 3: Generic Python host
+## Option 4: Generic Python host
 
 Upload the deployment ZIP, set the required environment variables, and use:
 

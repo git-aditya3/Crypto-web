@@ -15,12 +15,18 @@ import threading
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.error import HTTPError, URLError
+from urllib.request import Request as URLRequest
+from urllib.request import urlopen
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, Response, jsonify, render_template, request
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 APP_VERSION = "0.2.0"
 ADMIN_TOKEN = os.getenv("TEAM_A_ADMIN_TOKEN", "").strip()
+BACKEND_URL = os.getenv("TEAM_A_BACKEND_URL", "").strip().rstrip("/")
+if BACKEND_URL and not BACKEND_URL.startswith(("https://", "http://")):
+    raise RuntimeError("TEAM_A_BACKEND_URL must start with https:// or http://")
 
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO").upper(),
@@ -168,6 +174,36 @@ def can_serve() -> bool:
     return bool(getattr(oracle, "can_serve", lambda: oracle.status()["status"] == "ready")())
 
 
+def proxy_api(path: str) -> Response | None:
+    """Relay Vercel API requests to the persistent ML backend when configured."""
+    if not BACKEND_URL:
+        return None
+    headers = {"Accept": "application/json", "User-Agent": f"Team-A-Web/{APP_VERSION}"}
+    admin_token = request.headers.get("X-Admin-Token")
+    if admin_token:
+        headers["X-Admin-Token"] = admin_token
+    body = request.get_data() or None
+    upstream = URLRequest(f"{BACKEND_URL}/api/{path}", data=body, headers=headers, method=request.method)
+    try:
+        with urlopen(upstream, timeout=25) as response:
+            return Response(
+                response.read(),
+                status=response.status,
+                content_type=response.headers.get("Content-Type", "application/json"),
+            )
+    except HTTPError as exc:
+        return Response(
+            exc.read(),
+            status=exc.code,
+            content_type=exc.headers.get("Content-Type", "application/json"),
+        )
+    except URLError as exc:
+        app.logger.warning("ML backend unavailable: %s", exc.reason)
+        response = jsonify({"error": "The live prediction service is temporarily unavailable"})
+        response.status_code = 502
+        return response
+
+
 @app.after_request
 def production_headers(response):
     """Apply safe defaults for browsers, proxies, and API caches."""
@@ -198,6 +234,9 @@ def index():
 
 @app.get("/api/status")
 def api_status():
+    proxied = proxy_api("status")
+    if proxied is not None:
+        return proxied
     return jsonify({
         **oracle.status(),
         "mode": os.getenv("BTC_ORACLE_MODE", "demo").lower(),
@@ -208,6 +247,9 @@ def api_status():
 
 @app.get("/api/signal")
 def api_signal():
+    proxied = proxy_api("signal")
+    if proxied is not None:
+        return proxied
     if not can_serve():
         return jsonify({"error": "Forecast is not ready yet"}), 503
     try:
@@ -219,6 +261,9 @@ def api_signal():
 
 @app.post("/api/retrain")
 def api_retrain():
+    proxied = proxy_api("retrain")
+    if proxied is not None:
+        return proxied
     supplied_token = request.headers.get("X-Admin-Token", "")
     if ADMIN_TOKEN and not hmac.compare_digest(supplied_token, ADMIN_TOKEN):
         return jsonify({"error": "A valid admin token is required"}), 401

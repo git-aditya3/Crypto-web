@@ -16,8 +16,11 @@ FILES = (
     "Dockerfile",
     "LICENSE",
     "Procfile",
+    "pyproject.toml",
     "README.md",
     "render.yaml",
+    "uv.lock",
+    "vercel.json",
     "requirements.txt",
     "requirements-ml.txt",
 )
