@@ -1,0 +1,12 @@
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    environment:
+      BTC_ORACLE_MODE: ml
+      MARKET_REFRESH_SECONDS: 300
+      MODEL_RETRAIN_SECONDS: 21600
+      TEAM_A_ADMIN_TOKEN: ${TEAM_A_ADMIN_TOKEN:?Set TEAM_A_ADMIN_TOKEN in your environment}
+      LOG_LEVEL: INFO
+    restart: unless-stopped

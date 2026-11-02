@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: team-a-btc
+    runtime: python
+    plan: starter
+    buildCommand: pip install -r requirements.txt
+    startCommand: gunicorn --workers 1 --threads 4 --timeout 600 --graceful-timeout 30 --keep-alive 5 --max-requests 1000 --max-requests-jitter 100 --access-logfile - --error-logfile - --bind 0.0.0.0:$PORT app:app
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: BTC_ORACLE_MODE
+        value: ml
+      - key: TEAM_A_ADMIN_TOKEN
+        generateValue: true
+      - key: MARKET_REFRESH_SECONDS
+        value: 300
+      - key: MODEL_RETRAIN_SECONDS
+        value: 21600
+      - key: PYTHON_VERSION
+        value: 3.11.11
+      - key: LOG_LEVEL
+        value: INFO
