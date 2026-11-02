@@ -42,7 +42,7 @@ The first machine-learning core is available in `oracle/`:
 - `data.py` validates hourly candles and computes 20 leak-free technical/time features.
 - `models.py` builds a boosted tree, random forest, and neural sequence model. XGBoost and PyTorch are preferred when installed; explicitly named sklearn fallbacks keep development portable.
 - `engine.py` performs a purged, chronological 80/20 split per horizon, derives confidence weights from directional accuracy and RMSE, and generates calls and 80% price intervals.
-- Training runs in a background thread, model bundles are replaced atomically, and validated models retrain every 24 hours while the previous bundle continues serving.
+- Training runs in a background thread, model bundles are replaced atomically, and hosted models retrain every six hours on the newest candles while the previous bundle continues serving.
 
 The website stays in demo mode by default. To run the real engine:
 
@@ -51,7 +51,9 @@ pip install -r requirements-ml.txt
 BTC_ORACLE_MODE=ml python app.py
 ```
 
-Live mode downloads up to 729 days of hourly BTC-USD candles and starts training immediately. Yahoo Finance provides deep history, while Coinbase overlays the latest exchange candles and acts as a full-history failover. The browser requests a new snapshot every minute; the engine refreshes candles every five minutes without blocking requests and keeps serving the last verified data if a provider is temporarily unavailable. The API exposes `dataSource`, `dataAgeSeconds`, and `refreshWarning` so freshness is observable.
+Live mode downloads up to 729 days of hourly BTC-USD candles and starts training immediately. Yahoo Finance provides deep history, while Coinbase overlays the latest exchange candles and acts as a full-history failover. The engine refreshes candles every five minutes even when nobody has the dashboard open. Each API snapshot runs the trained ensemble against the newest feature window, and the browser requests a new prediction every minute. Every six hours the engine refits and validates all horizon models on the expanded history, then atomically replaces the previous bundles. A failed refresh or retraining attempt leaves the last verified data and models online.
+
+The API exposes `dataSource`, `dataAgeSeconds`, `marketUpdatedAt`, `modelTrainedAt`, `modelDataAsOf`, `nextRetrainAt`, `predictionGeneratedAt`, and `refreshWarning` so the complete live-data and self-training lifecycle is observable.
 
 The API status endpoint reports progress or a detailed error. Installing PyTorch is optional and documented in `requirements-ml.txt`; without it, the API honestly reports the `Neural Network` fallback rather than labelling it LSTM.
 

@@ -17,8 +17,7 @@ class MeanRegressor:
         return np.full(len(features), self.value)
 
 
-def synthetic_provider(symbol, days):
-    rows = 900
+def synthetic_candles(rows=900):
     index = pd.date_range("2025-01-01", periods=rows, freq="h", tz="UTC")
     trend = np.arange(rows) * 18
     close = pd.Series(70_000 + trend + np.sin(np.arange(rows) / 13) * 250, index=index)
@@ -29,6 +28,10 @@ def synthetic_provider(symbol, days):
         "close": close,
         "volume": 2000 + (np.arange(rows) % 50) * 20,
     }, index=index)
+
+
+def synthetic_provider(symbol, days):
+    return synthetic_candles()
 
 
 def model_factory():
@@ -44,10 +47,17 @@ def test_engine_trains_weighted_ensemble_and_serves_contract():
     )
     engine = OracleEngine(config, synthetic_provider, model_factory)
     engine.train()
-    assert engine.status()["status"] == "ready"
+    status = engine.status()
+    assert status["status"] == "ready"
+    assert status["serving"] is True
+    assert status["modelTrainedAt"]
+    assert status["modelDataAsOf"]
+    assert status["nextRetrainAt"]
 
     result = engine.snapshot()
     assert result["mode"] == "live"
+    assert result["predictionGeneratedAt"]
+    assert result["modelDataAsOf"] == status["modelDataAsOf"]
     assert len(result["history"]) == 168
     assert len(result["signals"]) == 2
     for signal in result["signals"]:
@@ -56,3 +66,28 @@ def test_engine_trains_weighted_ensemble_and_serves_contract():
         assert signal["low"] < signal["target"] < signal["high"]
         assert abs(sum(model["weight"] for model in signal["models"]) - 1) < 1e-10
         assert signal["samples"]["train"] > signal["samples"]["validation"]
+
+
+def test_retraining_consumes_new_candles_and_replaces_predictions():
+    rows = {"value": 900}
+
+    def evolving_provider(symbol, days):
+        return synthetic_candles(rows["value"])
+
+    config = OracleConfig(
+        horizons={"4 hours": 4},
+        sequence_length=12,
+        minimum_training_rows=200,
+        refresh_seconds=3600,
+    )
+    engine = OracleEngine(config, evolving_provider, model_factory)
+    engine.train()
+    first = engine.snapshot()
+
+    rows["value"] += 24
+    engine.train()
+    second = engine.snapshot()
+
+    assert second["modelDataAsOf"] > first["modelDataAsOf"]
+    assert second["price"] != first["price"]
+    assert second["predictionGeneratedAt"] >= first["predictionGeneratedAt"]

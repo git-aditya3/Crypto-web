@@ -133,6 +133,10 @@ class DemoOracle:
             "symbol": "BTC / USD",
             "dataSource": "Deterministic demo feed",
             "dataAgeSeconds": 0,
+            "marketUpdatedAt": now.isoformat(),
+            "modelTrainedAt": now.isoformat(),
+            "modelDataAsOf": now.isoformat(),
+            "predictionGeneratedAt": datetime.now(UTC).isoformat(),
             "refreshWarning": None,
             "price": price,
             "change24h": 2.41,
@@ -146,9 +150,13 @@ def create_oracle():
     """Select demo or live ML mode without coupling the web layer to training."""
     if os.getenv("BTC_ORACLE_MODE", "demo").lower() != "ml":
         return DemoOracle()
-    from oracle import OracleEngine
+    from oracle import OracleConfig, OracleEngine
 
-    engine = OracleEngine()
+    config = OracleConfig(
+        refresh_seconds=int(os.getenv("MARKET_REFRESH_SECONDS", "300")),
+        model_retrain_seconds=int(os.getenv("MODEL_RETRAIN_SECONDS", "21600")),
+    )
+    engine = OracleEngine(config=config)
     engine.retrain()
     return engine
 

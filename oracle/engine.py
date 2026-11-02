@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import threading
 import time
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 from functools import partial
 from typing import Any
 
@@ -38,6 +38,7 @@ class OracleEngine:
         self._features: pd.DataFrame | None = None
         self._fetched_at = 0.0
         self._trained_at = 0.0
+        self._trained_data_asof: pd.Timestamp | None = None
         self._last_refresh_error: str | None = None
         self._maintenance_started = False
         self._status: dict[str, Any] = {
@@ -46,7 +47,22 @@ class OracleEngine:
 
     def status(self) -> dict[str, Any]:
         with self._lock:
-            return {**self._status, "serving": bool(self._bundles)}
+            trained_at = self._trained_at
+            fetched_at = self._fetched_at
+            return {
+                **self._status,
+                "serving": bool(self._bundles),
+                "marketUpdatedAt": self._iso_timestamp(fetched_at),
+                "modelTrainedAt": self._iso_timestamp(trained_at),
+                "modelDataAsOf": self._trained_data_asof.isoformat() if self._trained_data_asof is not None else None,
+                "nextRetrainAt": self._iso_timestamp(trained_at + self.config.model_retrain_seconds)
+                if trained_at
+                else None,
+            }
+
+    @staticmethod
+    def _iso_timestamp(timestamp: float) -> str | None:
+        return datetime.fromtimestamp(timestamp, tz=UTC).isoformat() if timestamp else None
 
     def can_serve(self) -> bool:
         with self._lock:
@@ -140,6 +156,7 @@ class OracleEngine:
                 self._bundles = bundles
                 self._fetched_at = time.time()
                 self._trained_at = time.time()
+                self._trained_data_asof = candles.index[-1]
                 self._last_refresh_error = None
             self._set_status("ready", "Models online", 100)
             self._start_market_maintenance()
@@ -221,6 +238,9 @@ class OracleEngine:
             features = self._features.copy()  # type: ignore[union-attr]
             bundles = dict(self._bundles)
             refresh_error = self._last_refresh_error
+            fetched_at = self._fetched_at
+            trained_at = self._trained_at
+            trained_data_asof = self._trained_data_asof
 
         recent_features = features.dropna().iloc[-self.config.sequence_length :]
         if recent_features.empty:
@@ -283,6 +303,10 @@ class OracleEngine:
             "symbol": self.config.symbol.replace("-", " / "),
             "dataSource": candles.attrs.get("source", "Configured market provider"),
             "dataAgeSeconds": max(0, int((pd.Timestamp.now(tz="UTC") - as_of).total_seconds())),
+            "marketUpdatedAt": self._iso_timestamp(fetched_at),
+            "modelTrainedAt": self._iso_timestamp(trained_at),
+            "modelDataAsOf": trained_data_asof.isoformat() if trained_data_asof is not None else None,
+            "predictionGeneratedAt": datetime.now(UTC).isoformat(),
             "refreshWarning": refresh_error,
             "price": round(price, 2),
             "change24h": round((price / day_reference - 1) * 100, 2),

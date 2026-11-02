@@ -12,6 +12,10 @@ services:
         value: ml
       - key: TEAM_A_ADMIN_TOKEN
         generateValue: true
+      - key: MARKET_REFRESH_SECONDS
+        value: 300
+      - key: MODEL_RETRAIN_SECONDS
+        value: 21600
       - key: PYTHON_VERSION
         value: 3.11.11
       - key: LOG_LEVEL
